@@ -6,7 +6,6 @@ import polymod.backends.IBackend;
 import polymod.backends.PolymodAssets.PolymodAssetType;
 import polymod.format.ParseRules;
 import polymod.fs.PolymodFileSystem.IFileSystem;
-// import polymod.hscript.PolymodScriptClass;
 import polymod.util.Util;
 #if firetongue
 import firetongue.FireTongue;
@@ -140,7 +139,6 @@ class PolymodAssetLibrary
 		{
 			backend.destroy();
 		}
-		Polymod.clearScripts();
 	}
 
 	public function mergeAndAppendText(id:String, modText:String):String

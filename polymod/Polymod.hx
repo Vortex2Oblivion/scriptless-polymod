@@ -8,9 +8,6 @@ import polymod.backends.PolymodAssets;
 import polymod.format.JsonHelp;
 import polymod.format.ParseRules;
 import polymod.fs.PolymodFileSystem;
-#if hscript
-import polymod.hscript._internal.PolymodScriptClass;
-#end
 import polymod.util.DependencyUtil;
 import polymod.util.VersionUtil;
 import thx.semver.Version;
@@ -132,19 +129,6 @@ typedef PolymodParams =
 	#if firetongue
 	?firetongue:FireTongue,
 	#end
-	/**
-	 * (optional) Whether to perform the required initialization for scripted classes.
-	 *
-	 * Defaults to `false`.
-	 */
-	?useScriptedClasses:Bool,
-
-	/**
-	 * (optional) If `useScriptedClasses` is true, perform script loading asynchronously.
-	 *
-	 * Defaults to `false`.
-	 */
-	?loadScriptsAsync:Bool,
 }
 
 /**
@@ -323,28 +307,6 @@ class Polymod
 
 		// Store the params for later use (by loadMod, unloadMod, and clearMods)
 		prevParams = params;
-
-		// Do scripted class initialization now that the assetLibrary is loaded.
-		#if hscript
-		if (params.useScriptedClasses)
-		{
-			Polymod.notice(PolymodErrorCode.SCRIPT_PARSING, 'Parsing script classes...');
-
-			if (params.loadScriptsAsync) {
-				Polymod.registerAllScriptClassesAsync();
-			} else {
-				Polymod.registerAllScriptClasses();
-
-				var classList = polymod.hscript._internal.PolymodScriptClass.listScriptClasses();
-				Polymod.notice(PolymodErrorCode.SCRIPT_PARSED, 'Parsed and registered ${classList.length} scripted classes.');
-			}
-		}
-		#else
-		if (params.useScriptedClasses)
-		{
-			Polymod.warning(PolymodErrorCode.SCRIPT_HSCRIPT_NOT_INSTALLED, 'Scripted classes were requested, but hscript is not installed.');
-		}
-		#end
 
 		return sortedModsToLoad;
 	}
@@ -644,65 +606,6 @@ class Polymod
 		assetLibrary.clearCache();
 	}
 
-	/**
-	 * Clears all scripted functions and any registered scripted classes from the cache.
-	 * This is useful if you want to reload the scripts later.
-	 */
-	public static function clearScripts():Void
-	{
-		#if hscript
-		@:privateAccess
-		polymod.hscript._internal.PolymodInterpEx._scriptClassDescriptors.clear();
-		polymod.hscript.HScriptable.ScriptRunner.clearScripts();
-		#else
-		Polymod.warning(SCRIPT_HSCRIPT_NOT_INSTALLED, "Cannot register script classes, HScript is not available.");
-		#end
-	}
-
-	/**
-	 * Get a list of all the available scripted classes (`.hxc` files), interpret them, and register any classes.
-	 */
-	public static function registerAllScriptClasses():Void
-	{
-		#if hscript
-		@:privateAccess {
-			// Go through each script and parse any classes in them.
-			var potentialScripts:Array<String> = Polymod.assetLibrary.list(TEXT);
-			for (textPath in potentialScripts)
-			{
-				if (textPath.endsWith(PolymodConfig.scriptClassExt)) {
-					Polymod.debug('Registering script class "$textPath"');
-					polymod.hscript._internal.PolymodScriptClass.registerScriptClassByPath(textPath);
-				}
-			}
-		}
-		#else
-		Polymod.warning(SCRIPT_HSCRIPT_NOT_INSTALLED, "Cannot register script classes, HScript is not available.");
-		#end
-	}
-
-	/**
-	 * Get a list of all the available scripted classes (`.hxc` files), interpret them asynchronously, and register any classes.
-	 * Called on platforms that don't support synchronous file access.
-	 */
-	public static function registerAllScriptClassesAsync():Void
-	{
-		#if hscript
-		@:privateAccess {
-			// Go through each script and parse any classes in them.
-			var potentialScripts:Array<String> = Polymod.assetLibrary.list(TEXT);
-			for (textPath in potentialScripts)
-			{
-				if (textPath.endsWith(PolymodConfig.scriptClassExt)) {
-					Polymod.debug('Registering script class "$textPath"');
-					polymod.hscript._internal.PolymodScriptClass.registerScriptClassByPathAsync(textPath);
-				}
-			}
-		}
-		#else
-		Polymod.warning(SCRIPT_HSCRIPT_NOT_INSTALLED, "Cannot register script classes, HScript is not available.");
-		#end
-	}
 
 	public static function error(code:PolymodErrorCode, message:String, origin:PolymodErrorOrigin = UNKNOWN):Void
 	{
@@ -757,51 +660,6 @@ class Polymod
 		}
 	}
 
-	/**
-	 * When a scripted class defines an import, you can define another class which should be imported instead.
-	 * @param importAlias The full import path to use as an alias, as a string.
-	 * @param importClass The class type to import instead.
-	 */
-	public static function addImportAlias(importAlias:String, importClass:Class<Dynamic>):Void {
-		#if hscript
-		PolymodScriptClass.importOverrides.set(importAlias, importClass);
-		#else
-		Polymod.warning(PolymodErrorCode.SCRIPT_HSCRIPT_NOT_INSTALLED, 'Scripted classes imports were requested, but hscript is not installed.');
-		#end
-	}
-
-	public static function removeImportAlias(importAlias:String):Void {
-		#if hscript
-		PolymodScriptClass.importOverrides.remove(importAlias);
-		#else
-		Polymod.warning(PolymodErrorCode.SCRIPT_HSCRIPT_NOT_INSTALLED, 'Scripted classes imports were requested, but hscript is not installed.');
-		#end
-	}
-
-	/**
-	 * Define a class to be imported by default in all scripted classes.
-	 * @param importClass The class type to import.
-	 * @param importAlias (optional) The alias to use for the import. If not provided, the full class path will be used.
-	 */
-	public static function addDefaultImport(importClass:Class<Dynamic>, ?importAlias:String):Void {
-		#if hscript
-		PolymodScriptClass.defaultImports.set(importAlias == null ? Type.getClassName(importClass) : importAlias, importClass);
-		#else
-		Polymod.warning(PolymodErrorCode.SCRIPT_HSCRIPT_NOT_INSTALLED, 'Scripted classes imports were requested, but hscript is not installed.');
-		#end
-	}
-
-	/**
-	 * When a scripted class define an import, you can blacklist it from being imported.
-	 * @param importPath The full import path to blacklist, as a string.
-	 */
-	public static function blacklistImport(importPath:String):Void {
-		#if hscript
-		addImportAlias(importPath, null);
-		#else
-		Polymod.warning(PolymodErrorCode.SCRIPT_HSCRIPT_NOT_INSTALLED, 'Scripted classes imports were requested, but hscript is not installed.');
-		#end
-	}
 }
 
 /**
@@ -1229,88 +1087,6 @@ enum abstract PolymodErrorCode(String) from String to String
 	 */
 	var POLYMOD_NOT_LOADED:String = 'polymod_not_loaded';
 
-	/**
-	 * Script classes are currently disabled because the `hscript` library is not available.
-	 * - Make sure you have the `hscript` Haxelib installed if you want to use scripts.
-	 */
-	var SCRIPT_HSCRIPT_NOT_INSTALLED:String = 'script_hscript_not_installed';
-
-	/**
-	 * A script file of the given name could not be found.
-	 * - This happens when calling annotated functions in an HScriptable class when no script file exists.
-	 * - Make sure the script file exists in the proper location in your assets folder.
-	 * - Alternatively, you can expand your annotation to `@:hscript({optional: true})` to disable the error message,
-	 *     if your function can resolve properly without a script.
-	 */
-	var SCRIPT_NOT_FOUND:String = 'script_not_found';
-
-	/**
-	 * The scripted class does not import an `Assets` class to handle script loading.
-	 * - When loading scripts, the target of the HScriptable interface will call `Assets.getText` to read the relevant script file.
-	 * - You will need to import `openfl.util.Assets` on the HScriptable class, even if you don't otherwise use it.
-	 */
-	 var SCRIPT_NO_ASSET_HANDLER:String = 'script_no_asset_handler';
-
-	/**
-	 * You attempted to instantiate a scripted class that was not registered.
-	 * - Make sure your script is in the assets folder.
-	 * - Make sure that `useScriptedClasses` in your Polymod.init parameters is set to true.
-	 * - If your scripted class extends another class, make sure that class exists as well.
-	 */
-	var SCRIPT_CLASS_NOT_REGISTERED:String = 'script_class_not_registered';
-
-	/**
-	 * You attempted to register a new scripted class with a name that is already in use.
-	 * - Rename the scripted class to one that is unique and will not conflict with other scripted classes.
-	 * - If you need to clear the class descriptor, call `PolymodScriptClass.clearClasses()`.
-	 */
-	var SCRIPT_CLASS_ALREADY_REGISTERED:String = 'script_class_already_registered';
-
-	/**
-	 * Your script file attempted to import a class that was already imported.
-	 * - This is a warning and can be ignored.
-	 * - Remove the duplicate import statement to remove the warning.
-	 */
-	var SCRIPT_CLASS_MODULE_ALREADY_IMPORTED:String = 'script_class_module_already_imported';
-
-	/**
-	 * Your script file attempted to import a class that could not be resolved.
-	 * - Check the syntax of the import statement, and check for any typos.
-	 */
-	var SCRIPT_CLASS_MODULE_NOT_FOUND:String = 'script_class_module_not_found';
-
-	/**
-	 * Your script file attempted to import a blacklisted class.
-	 * - This is a security measure to prevent malicious scripts from accessing sensitive classes.
-	 * - Remove the import statement to remove the error.
-	 */
-	var SCRIPT_CLASS_MODULE_BLACKLISTED:String = 'script_class_module_blacklisted';
-
-	/**
-	 * One or more scripts are about to be parsed.
-	 * - This is an info message. You can log it or ignore it if you like.
-	 */
-	var SCRIPT_PARSING:String = 'script_parsing';
-
-	/**
-	 * One or more scripts have been successfully parsed.
-	 * - This is an info message. You can log it or ignore it if you like.
-	 */
-	var SCRIPT_PARSED:String = 'script_parsed';
-
-	/**
-	 * A script file could not be parsed for some unknown reason.
-	 * - Check the syntax of the script file is proper Haxe.
-	 * - Read the error message for more information.
-	 */
-	var SCRIPT_PARSE_ERROR:String = 'script_parse_error';
-
-	/**
-	 * While running a script, an exception was thrown.
-	 * - Read the error message for more information.
-	 * - Scripted functions will have the local variable `script_error` assigned, allowing you to handle the error gracefully.
-	 */
-	var SCRIPT_RUNTIME_EXCEPTION:String = 'script_runtime_exception';
 
 	/**
 	 * An installed mod is looking for another mod with a specific version, but the mod is not of that version.
